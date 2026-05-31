@@ -1,0 +1,6 @@
+{
+  "name": "BANK BINK BUNK",
+  "description": "Aplikasi pencatatan tabungan untuk melacak saldo, menyisihkan uang, menambahkan beberapa nama penabung, serta memantau riwayat transaksi setoran dan penarikan.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
