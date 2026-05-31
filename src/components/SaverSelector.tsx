@@ -11,9 +11,9 @@ interface SaverSelectorProps {
   savers: Saver[];
   activeSaverId: string | null;
   onSelectSaver: (id: string) => void;
-  onAddSaver?: (name: string, targetName: string, targetAmount: number) => void;
+  onAddSaver?: (name: string, targetName: string, targetAmount: number, password?: string) => void;
   onDeleteSaver?: (id: string) => void;
-  onUpdateSaverTarget?: (id: string, targetName: string, targetAmount: number) => void;
+  onUpdateSaverTarget?: (id: string, targetName: string, targetAmount: number, password?: string) => void;
   transactions: Transaction[];
   isReadOnly?: boolean;
 }
@@ -35,12 +35,14 @@ export default function SaverSelector({
   const [newName, setNewName] = useState('');
   const [newTargetName, setNewTargetName] = useState('');
   const [newTargetAmount, setNewTargetAmount] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [addError, setAddError] = useState('');
 
   // Form edit target state
   const [editingSaverId, setEditingSaverId] = useState<string | null>(null);
   const [editTargetName, setEditTargetName] = useState('');
   const [editTargetAmount, setEditTargetAmount] = useState('');
+  const [editPassword, setEditPassword] = useState('');
 
   // Calculate balance helper
   const getSaverBalance = (saverId: string) => {
@@ -69,12 +71,15 @@ export default function SaverSelector({
       setAddError('Target tabungan harus lebih dari Rp 0!');
       return;
     }
-    onAddSaver(newName.trim(), newTargetName.trim() || 'Tabungan Umum', targetAmt);
+    if (onAddSaver) {
+      onAddSaver(newName.trim(), newTargetName.trim() || 'Tabungan Umum', targetAmt, newPassword.trim());
+    }
     
     // Reset form
     setNewName('');
     setNewTargetName('');
     setNewTargetAmount('');
+    setNewPassword('');
     setAddError('');
     setIsAddOpen(false);
   };
@@ -83,12 +88,15 @@ export default function SaverSelector({
     setEditingSaverId(saver.id);
     setEditTargetName(saver.targetName);
     setEditTargetAmount(saver.targetAmount.toString());
+    setEditPassword(saver.password || '');
   };
 
   const handleSaveEdit = (saverId: string) => {
     const editAmt = parseFloat(editTargetAmount) || 0;
     if (editAmt <= 0) return;
-    onUpdateSaverTarget(saverId, editTargetName || 'Tabungan Umum', editAmt);
+    if (onUpdateSaverTarget) {
+      onUpdateSaverTarget(saverId, editTargetName || 'Tabungan Umum', editAmt, editPassword.trim());
+    }
     setEditingSaverId(null);
   };
 
@@ -291,6 +299,18 @@ export default function SaverSelector({
                 </div>
               </div>
 
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#5A6354] uppercase tracking-wider block">Password Masuk (Opsional)</label>
+                <input
+                  id="input-saver-password"
+                  type="password"
+                  placeholder="Kosongkan jika login penabung tanpa password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-sm bg-white border border-[#E5E0D5] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#82927E]/10 focus:border-[#82927E] transition-colors text-[#3E4437]"
+                />
+              </div>
+
               {/* Target Presets */}
               <div className="space-y-2 pt-1">
                 <span className="text-[10px] font-bold text-[#7A8274] uppercase tracking-wider block">Rekomendasi Rencana</span>
@@ -408,8 +428,8 @@ export default function SaverSelector({
                       </div>
 
                       {isEditing && (
-                        <div className="p-3.5 bg-white border border-[#E5E0D5] rounded-2xl space-y-2 mt-2">
-                          <h5 className="text-[10px] uppercase font-bold text-[#5A6354]">Edit Rencana Impian & Target</h5>
+                        <div className="p-3.5 bg-white border border-[#E5E0D5] rounded-2xl space-y-2 mt-2 font-sans">
+                          <h5 className="text-[10px] uppercase font-bold text-[#5A6354]">Edit Rencana Impian, Target & Password</h5>
                           <div className="space-y-1.5">
                             <input
                               type="text"
@@ -428,6 +448,13 @@ export default function SaverSelector({
                                 className="w-full text-xs pl-8 pr-3 py-2 border border-[#E5E0D5] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#82927E] text-[#3E4437] font-mono"
                               />
                             </div>
+                            <input
+                              type="password"
+                              value={editPassword}
+                              onChange={(e) => setEditPassword(e.target.value)}
+                              placeholder="Password Baru Penabung (Kosongkan jika tidak pakai)"
+                              className="w-full text-xs px-3 py-2 border border-[#E5E0D5] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#82927E] text-[#3E4437]"
+                            />
                           </div>
                           <button
                             onClick={() => handleSaveEdit(saver.id)}
@@ -439,9 +466,19 @@ export default function SaverSelector({
                       )}
 
                       {!isEditing && (
-                        <div className="flex items-center gap-1.5 text-xs text-[#5A6354]">
-                          <Target className="h-3.5 w-3.5 text-[#D97B5F]" />
-                          <span>Goal: <strong>{saver.targetName}</strong> (Rp {saver.targetAmount.toLocaleString('id-ID')})</span>
+                        <div className="space-y-1.5 text-xs text-[#5A6354]">
+                          <div className="flex items-center gap-1.5">
+                            <Target className="h-3.5 w-3.5 text-[#D97B5F]" />
+                            <span>Goal: <strong>{saver.targetName}</strong> (Rp {saver.targetAmount.toLocaleString('id-ID')})</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[11px] font-medium">
+                            <span className="text-[#7A8274]">🔐 Password:</span>
+                            {saver.password ? (
+                              <span className="text-[10px] bg-amber-500/10 text-amber-700 font-bold px-2 py-0.5 rounded border border-amber-500/20">Aktif Terproteksi</span>
+                            ) : (
+                              <span className="text-[10px] bg-slate-500/10 text-slate-500 px-2 py-0.5 rounded border border-slate-500/20">Tanpa Password</span>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>

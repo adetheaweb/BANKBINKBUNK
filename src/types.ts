@@ -9,6 +9,7 @@ export interface Saver {
   targetName: string;
   targetAmount: number;
   createdAt: string;
+  password?: string;
 }
 
 export interface Transaction {

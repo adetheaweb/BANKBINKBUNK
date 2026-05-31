@@ -37,6 +37,7 @@ export default function App() {
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [selectedSaverLoginId, setSelectedSaverLoginId] = useState('');
+  const [saverPassword, setSaverPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
   // 1a. Listen to database real-time sync with cloud Firestore
@@ -136,6 +137,13 @@ export default function App() {
       setLoginError('Sistem tidak mendeteksi adanya data Penabung. Silakan buat dahulu lewat Login Admin!');
       return;
     }
+    const targetSaver = savers.find(s => s.id === selectedSaverLoginId);
+    if (targetSaver && targetSaver.password) {
+      if (saverPassword !== targetSaver.password) {
+        setLoginError('Password Penabung Anda salah.');
+        return;
+      }
+    }
     setUserRole('saver');
     setLoggedInSaverId(selectedSaverLoginId);
     setActiveSaverId(selectedSaverLoginId);
@@ -143,6 +151,7 @@ export default function App() {
     localStorage.setItem('savings_app_logged_in_saver_id', selectedSaverLoginId);
     localStorage.setItem('savings_app_active_saver_id', selectedSaverLoginId);
     setLoginError('');
+    setSaverPassword('');
   };
 
   const handleLogout = () => {
@@ -152,6 +161,7 @@ export default function App() {
     localStorage.removeItem('savings_app_logged_in_saver_id');
     setAdminUsername('');
     setAdminPassword('');
+    setSaverPassword('');
     setLoginError('');
   };
 
@@ -161,14 +171,15 @@ export default function App() {
   };
 
   // 3. Action: Add Saver
-  const handleAddSaver = async (name: string, targetName: string, targetAmount: number) => {
+  const handleAddSaver = async (name: string, targetName: string, targetAmount: number, password?: string) => {
     const id = `saver-${Date.now()}`;
     const newSaver: Saver = {
       id,
       name,
       targetName,
       targetAmount,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      ...(password ? { password } : {})
     };
 
     try {
@@ -200,14 +211,15 @@ export default function App() {
   };
 
   // 5. Action: Update Saver Goal Target
-  const handleUpdateSaverTarget = async (id: string, targetName: string, targetAmount: number) => {
+  const handleUpdateSaverTarget = async (id: string, targetName: string, targetAmount: number, password?: string) => {
     const targetSaver = savers.find(s => s.id === id);
     if (!targetSaver) return;
 
     const updatedSaver: Saver = {
       ...targetSaver,
       targetName,
-      targetAmount
+      targetAmount,
+      ...(password !== undefined ? { password } : {})
     };
 
     try {
@@ -286,6 +298,8 @@ export default function App() {
   const visibleSavers = userRole === 'saver'
     ? savers.filter(s => s.id === loggedInSaverId)
     : savers;
+
+  const selectedSaver = savers.find(s => s.id === selectedSaverLoginId);
 
   // Render login screen if no user is authenticated
   if (userRole === null) {
@@ -407,6 +421,28 @@ export default function App() {
                     </div>
                   )}
                 </div>
+
+                {selectedSaver && selectedSaver.password && (
+                  <div className="space-y-1.5 font-sans">
+                    <label className="text-xs font-bold text-brand-text-muted uppercase tracking-wider block">
+                      Masukkan Password Penabung 🔐
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="password"
+                        placeholder="Pasword Penabung..."
+                        value={saverPassword}
+                        onChange={(e) => {
+                          setSaverPassword(e.target.value);
+                          setLoginError('');
+                        }}
+                        className="w-full pl-10 pr-4 py-2.5 text-xs text-brand-text bg-white border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-sage/10 focus:border-brand-sage font-semibold"
+                        required
+                      />
+                      <Key className="absolute left-3.5 top-3.5 h-3.5 w-3.5 text-brand-text-muted pointer-events-none" />
+                    </div>
+                  </div>
+                )}
 
                 <div className="p-4 bg-brand-sage-light/60 rounded-2xl border border-brand-border flex items-start gap-2.5">
                   <Sparkles className="h-4 w-4 text-brand-coral shrink-0 mt-0.5" />
