@@ -37,9 +37,19 @@ export default function App() {
 
   useEffect(() => {
     // Load savers
-    const storedSavers = localStorage.getItem('savings_app_savers');
-    const storedTxs = localStorage.getItem('savings_app_transactions');
-    const storedActiveId = localStorage.getItem('savings_app_active_saver_id');
+    let storedSavers = localStorage.getItem('savings_app_savers');
+    let storedTxs = localStorage.getItem('savings_app_transactions');
+    let storedActiveId = localStorage.getItem('savings_app_active_saver_id');
+
+    // Force clear if it contains seed data 'Ahmad Syarif' to start fully blank for the user
+    if (storedSavers && storedSavers.includes('Ahmad Syarif')) {
+      storedSavers = null;
+      storedTxs = null;
+      storedActiveId = null;
+      localStorage.removeItem('savings_app_savers');
+      localStorage.removeItem('savings_app_transactions');
+      localStorage.removeItem('savings_app_active_saver_id');
+    }
 
     let currentSavers: Saver[] = [];
     if (storedSavers && storedTxs) {
@@ -54,17 +64,15 @@ export default function App() {
         setActiveSaverId(parsedSavers[0].id);
       }
     } else {
-      // Load mock seeds
-      setSavers(INITIAL_SAVERS);
-      setTransactions(INITIAL_TRANSACTIONS);
-      currentSavers = INITIAL_SAVERS;
-      if (INITIAL_SAVERS.length > 0) {
-        setActiveSaverId(INITIAL_SAVERS[0].id);
-      }
-      // Save them as local storage initially
-      localStorage.setItem('savings_app_savers', JSON.stringify(INITIAL_SAVERS));
-      localStorage.setItem('savings_app_transactions', JSON.stringify(INITIAL_TRANSACTIONS));
-      localStorage.setItem('savings_app_active_saver_id', INITIAL_SAVERS[0].id);
+      // Start empty! No mock seeds
+      setSavers([]);
+      setTransactions([]);
+      currentSavers = [];
+      setActiveSaverId(null);
+      
+      localStorage.setItem('savings_app_savers', JSON.stringify([]));
+      localStorage.setItem('savings_app_transactions', JSON.stringify([]));
+      localStorage.removeItem('savings_app_active_saver_id');
     }
 
     // Set default selected saver in login dropdown
@@ -105,7 +113,7 @@ export default function App() {
       localStorage.setItem('savings_app_role', 'admin');
       setLoginError('');
     } else {
-      setLoginError('Username atau password admin salah. (Kredensial: admin / admin123)');
+      setLoginError('Username atau password admin salah.');
     }
   };
 
@@ -207,13 +215,6 @@ export default function App() {
   const handleDeleteTransaction = (id: string) => {
     const updatedTxs = transactions.filter(t => t.id !== id);
     persistData(savers, updatedTxs, activeSaverId);
-  };
-
-  // 8. Action: Reset to fresh sandbox state or default seeds
-  const handleResetToSeeds = () => {
-    if (confirm('Apakah Anda ingin memulihkan data tabungan uji coba seperti semula? Semua perubahan baru akan digantikan.')) {
-      persistData(INITIAL_SAVERS, INITIAL_TRANSACTIONS, INITIAL_SAVERS[0].id);
-    }
   };
 
   const handleResetEmpty = () => {
@@ -420,10 +421,6 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="p-3.5 bg-brand-sage-light rounded-xl border border-brand-border text-[10px] text-brand-text-muted font-semibold leading-relaxed">
-                  🔐 <strong>Kredensial Pengujian:</strong> Use Username: <span className="font-mono text-brand-text bg-white px-1.5 py-0.5 rounded border border-brand-border">admin</span> & Password: <span className="font-mono text-brand-text bg-white px-1.5 py-0.5 rounded border border-brand-border">admin123</span>.
-                </div>
-
                 <button
                   type="submit"
                   className="w-full py-3 px-4 font-bold text-sm text-white bg-brand-sidebar hover:opacity-90 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer duration-150"
@@ -458,22 +455,13 @@ export default function App() {
           {/* Mobile responsive Quick Seeds / Session header buttons */}
           <div className="flex lg:hidden gap-1.5 flex-wrap items-center">
             {userRole === 'admin' ? (
-              <>
-                <button
-                  onClick={handleResetToSeeds}
-                  className="p-1.5 text-brand-text-muted hover:text-brand-sage duration-150"
-                  title="Data Demo"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={handleResetEmpty}
-                  className="p-1.5 text-brand-text-muted hover:text-[#D97B5F] duration-150"
-                  title="Reset Kosong"
-                >
-                  <Layers className="h-4 w-4" />
-                </button>
-              </>
+              <button
+                onClick={handleResetEmpty}
+                className="p-1.5 text-brand-text-muted hover:text-[#D97B5F] duration-150 cursor-pointer"
+                title="Kosongkan Data"
+              >
+                <Layers className="h-4 w-4" />
+              </button>
             ) : (
               <span className="text-[10px] bg-[#82927E]/10 border border-[#82927E]/20 text-[#3E4437] font-semibold px-2 py-0.5 rounded-full">
                 👤 {activeSaver?.name}
@@ -576,22 +564,12 @@ export default function App() {
         {userRole === 'admin' && (
           <div className="hidden lg:flex flex-col gap-1.5 pb-4 border-b border-brand-border/60 mb-4">
             <button
-              onClick={handleResetToSeeds}
-              className="w-full flex items-center justify-between text-left p-2.5 rounded-xl hover:bg-white/50 text-xs text-[#5A6354] font-medium border border-transparent hover:border-brand-border duration-150"
-            >
-              <span className="flex items-center gap-1.5">
-                <RefreshCw className="h-3.5 w-3.5 text-[#82927E]" />
-                Reset Data Demo
-              </span>
-              <ArrowRight className="h-3 w-3 text-brand-text-muted" />
-            </button>
-            <button
               onClick={handleResetEmpty}
-              className="w-full flex items-center justify-between text-left p-2.5 rounded-xl hover:bg-red-50/40 text-[11px] text-brand-text-muted hover:text-brand-coral duration-150"
+              className="w-full flex items-center justify-between text-left p-2.5 rounded-xl hover:bg-red-50/40 text-[11px] text-brand-text-muted hover:text-brand-coral transition-colors duration-150 cursor-pointer"
             >
-              <span className="flex items-center gap-1.5">
+              <span className="flex items-center gap-1.5 font-semibold">
                 <Layers className="h-3.5 w-3.5 text-brand-coral" />
-                Reset Kosong
+                Kosongkan Semua Data
               </span>
             </button>
           </div>
