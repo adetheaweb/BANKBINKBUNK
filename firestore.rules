@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common Helpers
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Saver validation helper
+    function isValidSaver(data) {
+      return data.keys().hasAll(['id', 'name', 'targetName', 'targetAmount', 'createdAt'])
+        && data.keys().size() == 5
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 100
+        && data.targetName is string && data.targetName.size() <= 100
+        && data.targetAmount is number
+        && data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    // Transaction validation helper
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['id', 'saverId', 'type', 'amount', 'category', 'note', 'date'])
+        && data.keys().size() == 7
+        && data.id is string && data.id.size() <= 128
+        && data.saverId is string && data.saverId.size() <= 128
+        && (data.type == 'deposit' || data.type == 'withdraw')
+        && data.amount is number
+        && data.category is string && data.category.size() <= 100
+        && data.note is string && data.note.size() <= 500
+        && data.date is string && data.date.size() <= 50;
+    }
+
+    // Collection: Savers
+    match /savers/{saverId} {
+      allow read: if true;
+      allow create, update: if isValidId(saverId) && isValidSaver(incoming());
+      allow delete: if isValidId(saverId);
+    }
+
+    // Collection: Transactions
+    match /transactions/{transactionId} {
+      allow read: if true;
+      allow create: if isValidId(transactionId) && isValidTransaction(incoming()) && exists(/databases/$(database)/documents/savers/$(incoming().saverId));
+      allow update: if isValidId(transactionId) && isValidTransaction(incoming());
+      allow delete: if isValidId(transactionId);
+    }
+  }
+}

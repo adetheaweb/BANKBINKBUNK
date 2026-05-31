@@ -1,0 +1,42 @@
+{
+  "entities": {
+    "Saver": {
+      "title": "Saver",
+      "description": "Seorang Penabung dengan sasaran target tabungan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "targetName": { "type": "string" },
+        "targetAmount": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "targetName", "targetAmount", "createdAt"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Mutasi tabungan berupa setoran atau penarikan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "saverId": { "type": "string" },
+        "type": { "type": "string" },
+        "amount": { "type": "number" },
+        "category": { "type": "string" },
+        "note": { "type": "string" },
+        "date": { "type": "string" }
+      },
+      "required": ["id", "saverId", "type", "amount", "category", "note", "date"]
+    }
+  },
+  "firestore": {
+    "savers/{saverId}": {
+      "schema": "Saver",
+      "description": "Data koleksi penabung"
+    },
+    "transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Data koleksi semua mutasi transaksi tabungan"
+    }
+  }
+}

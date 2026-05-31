@@ -12,12 +12,16 @@ import SavingsOverview from './components/SavingsOverview';
 import TransactionPanel from './components/TransactionPanel';
 import HistoryPanel from './components/HistoryPanel';
 import SaverChart from './components/SaverChart';
+import { db, handleFirestoreError, OperationType } from './firebase';
+import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 export default function App() {
-  // 1. Initialize states from localStorage or defaults
+  // 1. Initialize states
   const [savers, setSavers] = useState<Saver[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [activeSaverId, setActiveSaverId] = useState<string | null>(null);
+  const [activeSaverId, setActiveSaverId] = useState<string | null>(() => {
+    return localStorage.getItem('savings_app_active_saver_id') || null;
+  });
   const [activeTab, setActiveTab] = useState<'all' | 'setor' | 'riwayat' | 'analisis'>('all');
 
   // Authentication states
@@ -35,76 +39,85 @@ export default function App() {
   const [selectedSaverLoginId, setSelectedSaverLoginId] = useState('');
   const [loginError, setLoginError] = useState('');
 
+  // 1a. Listen to database real-time sync with cloud Firestore
   useEffect(() => {
-    // Load savers
-    let storedSavers = localStorage.getItem('savings_app_savers');
-    let storedTxs = localStorage.getItem('savings_app_transactions');
-    let storedActiveId = localStorage.getItem('savings_app_active_saver_id');
+    const unsubSavers = onSnapshot(
+      collection(db, 'savers'),
+      (snapshot) => {
+        const loadedSavers: Saver[] = [];
+        snapshot.forEach((docSnap) => {
+          loadedSavers.push(docSnap.data() as Saver);
+        });
+        
+        // Sort by createdAt or name to have a stable order
+        loadedSavers.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        setSavers(loadedSavers);
 
-    // Force clear if it contains seed data 'Ahmad Syarif' to start fully blank for the user
-    if (storedSavers && storedSavers.includes('Ahmad Syarif')) {
-      storedSavers = null;
-      storedTxs = null;
-      storedActiveId = null;
-      localStorage.removeItem('savings_app_savers');
-      localStorage.removeItem('savings_app_transactions');
-      localStorage.removeItem('savings_app_active_saver_id');
-    }
-
-    let currentSavers: Saver[] = [];
-    if (storedSavers && storedTxs) {
-      const parsedSavers = JSON.parse(storedSavers);
-      setSavers(parsedSavers);
-      setTransactions(JSON.parse(storedTxs));
-      currentSavers = parsedSavers;
-      
-      if (storedActiveId && parsedSavers.some((s: Saver) => s.id === storedActiveId)) {
-        setActiveSaverId(storedActiveId);
-      } else if (parsedSavers.length > 0) {
-        setActiveSaverId(parsedSavers[0].id);
+        // Update active saver ID if not set or invalid
+        setActiveSaverId((prevId) => {
+          if (!prevId && loadedSavers.length > 0) {
+            const stored = localStorage.getItem('savings_app_active_saver_id');
+            if (stored && loadedSavers.some(s => s.id === stored)) {
+              return stored;
+            }
+            return loadedSavers[0].id;
+          }
+          if (prevId && !loadedSavers.some(s => s.id === prevId)) {
+            return loadedSavers.length > 0 ? loadedSavers[0].id : null;
+          }
+          return prevId;
+        });
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'savers');
       }
-    } else {
-      // Start empty! No mock seeds
-      setSavers([]);
-      setTransactions([]);
-      currentSavers = [];
-      setActiveSaverId(null);
-      
-      localStorage.setItem('savings_app_savers', JSON.stringify([]));
-      localStorage.setItem('savings_app_transactions', JSON.stringify([]));
-      localStorage.removeItem('savings_app_active_saver_id');
-    }
+    );
 
-    // Set default selected saver in login dropdown
-    if (currentSavers.length > 0) {
-      const activeIdFromStorage = localStorage.getItem('savings_app_logged_in_saver_id');
-      if (activeIdFromStorage && currentSavers.some(s => s.id === activeIdFromStorage)) {
-        setSelectedSaverLoginId(activeIdFromStorage);
-      } else {
-        setSelectedSaverLoginId(currentSavers[0].id);
+    const unsubTxs = onSnapshot(
+      collection(db, 'transactions'),
+      (snapshot) => {
+        const loadedTxs: Transaction[] = [];
+        snapshot.forEach((docSnap) => {
+          loadedTxs.push(docSnap.data() as Transaction);
+        });
+        
+        // Sort by date/time descending to show newest first!
+        loadedTxs.sort((a, b) => b.date.localeCompare(a.date));
+        setTransactions(loadedTxs);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'transactions');
       }
-    }
+    );
+
+    return () => {
+      unsubSavers();
+      unsubTxs();
+    };
   }, []);
 
-  // Helper saving arrays back to persistence layer
-  const persistData = (newSavers: Saver[], newTxs: Transaction[], newActiveId: string | null) => {
-    setSavers(newSavers);
-    setTransactions(newTxs);
-    setActiveSaverId(newActiveId);
-
-    localStorage.setItem('savings_app_savers', JSON.stringify(newSavers));
-    localStorage.setItem('savings_app_transactions', JSON.stringify(newTxs));
-    if (newActiveId) {
-      localStorage.setItem('savings_app_active_saver_id', newActiveId);
+  // Sync active saver to localStorage on change for session retention
+  useEffect(() => {
+    if (activeSaverId) {
+      localStorage.setItem('savings_app_active_saver_id', activeSaverId);
     } else {
       localStorage.removeItem('savings_app_active_saver_id');
     }
+  }, [activeSaverId]);
 
-    // Keep selected login dropdown synced
-    if (newSavers.length > 0 && !newSavers.some(s => s.id === selectedSaverLoginId)) {
-      setSelectedSaverLoginId(newSavers[0].id);
+  // Set default selected saver in login dropdown as savers load
+  useEffect(() => {
+    if (savers.length > 0) {
+      const activeIdFromStorage = localStorage.getItem('savings_app_logged_in_saver_id');
+      if (activeIdFromStorage && savers.some(s => s.id === activeIdFromStorage)) {
+        setSelectedSaverLoginId(activeIdFromStorage);
+      } else if (!selectedSaverLoginId || !savers.some(s => s.id === selectedSaverLoginId)) {
+        setSelectedSaverLoginId(savers[0].id);
+      }
+    } else {
+      setSelectedSaverLoginId('');
     }
-  };
+  }, [savers, selectedSaverLoginId]);
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -145,51 +158,67 @@ export default function App() {
   // 2. Action: Select Saver
   const handleSelectSaver = (id: string) => {
     setActiveSaverId(id);
-    localStorage.setItem('savings_app_active_saver_id', id);
   };
 
   // 3. Action: Add Saver
-  const handleAddSaver = (name: string, targetName: string, targetAmount: number) => {
+  const handleAddSaver = async (name: string, targetName: string, targetAmount: number) => {
+    const id = `saver-${Date.now()}`;
     const newSaver: Saver = {
-      id: `saver-${Date.now()}`,
+      id,
       name,
       targetName,
       targetAmount,
       createdAt: new Date().toISOString()
     };
 
-    const updatedSavers = [...savers, newSaver];
-    persistData(updatedSavers, transactions, newSaver.id);
+    try {
+      await setDoc(doc(db, 'savers', id), newSaver);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `savers/${id}`);
+    }
   };
 
   // 4. Action: Delete Saver
-  const handleDeleteSaver = (id: string) => {
-    const updatedSavers = savers.filter(s => s.id !== id);
-    // Also prune their related transactions
-    const updatedTxs = transactions.filter(t => t.saverId !== id);
-    
-    // Choose next active saver, or null if empty
-    let nextActiveId: string | null = null;
-    if (updatedSavers.length > 0) {
-      nextActiveId = id === activeSaverId ? updatedSavers[0].id : activeSaverId;
-    }
+  const handleDeleteSaver = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'savers', id));
+      
+      const txsToDelete = transactions.filter(t => t.saverId === id);
+      for (const tx of txsToDelete) {
+        await deleteDoc(doc(db, 'transactions', tx.id));
+      }
 
-    persistData(updatedSavers, updatedTxs, nextActiveId);
+      const updatedSavers = savers.filter(s => s.id !== id);
+      let nextActiveId: string | null = null;
+      if (updatedSavers.length > 0) {
+        nextActiveId = id === activeSaverId ? updatedSavers[0].id : activeSaverId;
+      }
+      setActiveSaverId(nextActiveId);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `savers/${id}`);
+    }
   };
 
   // 5. Action: Update Saver Goal Target
-  const handleUpdateSaverTarget = (id: string, targetName: string, targetAmount: number) => {
-    const updatedSavers = savers.map(s => {
-      if (s.id === id) {
-        return { ...s, targetName, targetAmount };
-      }
-      return s;
-    });
-    persistData(updatedSavers, transactions, activeSaverId);
+  const handleUpdateSaverTarget = async (id: string, targetName: string, targetAmount: number) => {
+    const targetSaver = savers.find(s => s.id === id);
+    if (!targetSaver) return;
+
+    const updatedSaver: Saver = {
+      ...targetSaver,
+      targetName,
+      targetAmount
+    };
+
+    try {
+      await setDoc(doc(db, 'savers', id), updatedSaver);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `savers/${id}`);
+    }
   };
 
   // 6. Action: Add Transaction (Setoran / Penarikan)
-  const handleAddTransaction = (
+  const handleAddTransaction = async (
     saverId: string,
     type: 'deposit' | 'withdraw',
     amount: number,
@@ -197,8 +226,9 @@ export default function App() {
     note: string,
     date: string
   ) => {
+    const id = `tx-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const newTx: Transaction = {
-      id: `tx-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id,
       saverId,
       type,
       amount,
@@ -207,19 +237,35 @@ export default function App() {
       date
     };
 
-    const updatedTxs = [...transactions, newTx];
-    persistData(savers, updatedTxs, activeSaverId);
+    try {
+      await setDoc(doc(db, 'transactions', id), newTx);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `transactions/${id}`);
+    }
   };
 
   // 7. Action: Delete single Transaction log
-  const handleDeleteTransaction = (id: string) => {
-    const updatedTxs = transactions.filter(t => t.id !== id);
-    persistData(savers, updatedTxs, activeSaverId);
+  const handleDeleteTransaction = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'transactions', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `transactions/${id}`);
+    }
   };
 
-  const handleResetEmpty = () => {
-    if (confirm('Apakah Anda yakin ingin mengosongkan seluruh data tabungan di aplikasi ini?')) {
-      persistData([], [], null);
+  const handleResetEmpty = async () => {
+    if (confirm('Apakah Anda yakin ingin mengosongkan seluruh data tabungan di bank ini dari server cloud?')) {
+      try {
+        for (const s of savers) {
+          await deleteDoc(doc(db, 'savers', s.id));
+        }
+        for (const t of transactions) {
+          await deleteDoc(doc(db, 'transactions', t.id));
+        }
+        setActiveSaverId(null);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, 'bulk-deletion');
+      }
     }
   };
 
@@ -273,7 +319,7 @@ export default function App() {
           </div>
 
           <div className="pt-6 border-t border-white/10 text-xs text-brand-sage-light/60 relative z-10 font-medium">
-            &copy; 2026 BANK BINK BUNK • Sesi Tersimpan Secara Aman di Penyimpanan Lokal Browser.
+            &copy; 2026 BANK BINK BUNK • Sinkronisasi Cloud Database Real-time Aktif.
           </div>
         </div>
 
